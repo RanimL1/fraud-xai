@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+data/*.csv
+# artifacts/model.txt et artifacts/sample.parquet sont VOLONTAIREMENT versionnés (nécessaires au déploiement Streamlit).
+# Garder chaque fichier < 100 Mo (GitHub) : python train.py --sample-size 5000
