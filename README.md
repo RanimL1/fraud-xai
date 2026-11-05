@@ -78,10 +78,7 @@ Les pages de données s'appuient sur `profile.json` (agrégats uniquement) : les
 
 Variables `V*`, `C*`, `D*` anonymisées (explication statistique, non causale) ; dérive de la fraude dans le temps ; coût d'une fausse alerte supposé ; échantillon de démonstration enrichi en fraudes (~20 %) alors que les métriques portent sur tout le jeu de test.
 
-## Publier sur GitHub
+## Auteur
+ 
+Ranim Latrous, étudiante en 3e année, spécialité intelligence artificielle, ENSI.
 
-```powershell
-git init; git add .; git commit -m "Détection de fraude explicable IEEE-CIS"
-git branch -M main; git remote add origin <url-du-dépôt>; git push -u origin main
-```
-Les CSV Kaggle sont ignorés par `.gitignore`.
