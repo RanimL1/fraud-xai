@@ -1,4 +1,4 @@
-# Détection de fraude explicable — IEEE-CIS (Challenge 2)
+# Détection de fraude explicable — IEEE-CIS 
 
 Application **Streamlit multi-pages** : chaque phase du projet est une page, des données brutes à l'explication d'une décision individuelle. Modèle LightGBM entraîné sur le jeu IEEE-CIS (Vesta), explications SHAP, scénarios « et si ? ».
 
