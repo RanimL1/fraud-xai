@@ -1,0 +1,8 @@
+# Entraînement, notebook, explications graphiques, API FastAPI optionnelle
+-r requirements.txt
+scikit-learn
+shap>=0.44
+matplotlib
+jupyter
+fastapi
+uvicorn[standard]

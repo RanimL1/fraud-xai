@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fraude explicable — IEEE-CIS</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1f2430;--mut:#6b7280;--bd:#e5e7eb;--red:#d64545;--blue:#3b73c4;--ok:#2f9e6b}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--tx)}
+header{padding:18px 28px;background:#1f2937;color:#fff}header h1{margin:0;font-size:20px}header p{margin:4px 0 0;color:#cbd5e1;font-size:13px}
+main{max-width:1280px;margin:0 auto;padding:20px 28px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.kpi,.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px}
+.kpi b{display:block;font-size:22px}.kpi span{color:var(--mut);font-size:12px}
+.grid{display:grid;grid-template-columns:1fr 1.15fr;gap:16px}@media(max-width:980px){.grid{grid-template-columns:1fr}}
+h2{margin:0 0 10px;font-size:15px}.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+select,input,button{font:inherit;padding:5px 8px;border:1px solid var(--bd);border-radius:6px;background:#fff}
+button{background:var(--blue);color:#fff;border-color:var(--blue);cursor:pointer}
+table{width:100%;border-collapse:collapse}th,td{padding:6px 8px;border-bottom:1px solid var(--bd);text-align:left}
+th{color:var(--mut);font-weight:600;font-size:12px}tbody tr{cursor:pointer}tbody tr:hover,tr.sel{background:#eef3fb}
+.bar{height:6px;background:#e5e7eb;border-radius:3px;min-width:60px}.bar i{display:block;height:100%;border-radius:3px;background:var(--red)}
+.tag{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}.t-red{background:#fde8e8;color:var(--red)}.t-ok{background:#e3f5ec;color:var(--ok)}
+.mut{color:var(--mut)}.wi{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin-top:10px}.wi label{font-size:12px;color:var(--mut)}
+.wi input{width:100%}.verdict{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.big{font-size:26px;font-weight:700}.canvas-wrap{position:relative;height:340px}
+</style>
+</head>
+<body>
+<header><h1>Détection de fraude explicable</h1>
+<p>IEEE-CIS (Vesta) · LightGBM · explications SHAP locales et globales · scénarios « et si ? »</p></header>
+<main>
+<div class="kpis" id="kpis"></div>
+<div class="grid">
+  <section class="card">
+    <h2>Transactions (jeu de test, ordre chronologique)</h2>
+    <div class="filters">
+      <select id="f-label"><option value="all">Toutes</option><option value="fraud">Fraudes réelles</option><option value="legit">Légitimes</option></select>
+      <select id="f-flag"><option value="all">Alerte : toutes</option><option value="yes">Signalées</option><option value="no">Non signalées</option></select>
+      <select id="f-sort"><option value="proba">Score décroissant</option><option value="random">Aléatoire</option><option value="amount">Montant</option><option value="time">Date</option></select>
+      <button onclick="loadTable()">Actualiser</button>
+    </div>
+    <div style="max-height:520px;overflow:auto"><table><thead><tr><th>ID</th><th>Montant</th><th>Produit</th><th>Score</th><th>Alerte</th><th>Réel</th></tr></thead><tbody id="tbody"></tbody></table></div>
+    <p class="mut" id="note" style="font-size:12px"></p>
+  </section>
+  <section class="card" id="explain-card">
+    <h2>Explication de la décision</h2>
+    <p class="mut" id="placeholder">Sélectionnez une transaction à gauche.</p>
+    <div id="exp" hidden>
+      <div class="verdict"><span class="big" id="score"></span><span id="flag"></span><span class="mut" id="truth"></span></div>
+      <p class="mut" style="margin:0 0 6px;font-size:12px">Barres rouges : poussent vers « fraude ». Barres bleues : poussent vers « légitime ». Unité : log-odds (SHAP).</p>
+      <div class="canvas-wrap"><canvas id="chart-exp"></canvas></div>
+      <h2 style="margin-top:14px">Et si… ? <span class="mut" style="font-weight:400">modifiez des valeurs puis recalculez</span></h2>
+      <div class="wi" id="wi"></div>
+      <p><button onclick="whatIf()">Recalculer le score</button> <span id="wi-res" class="mut"></span></p>
+    </div>
+  </section>
+</div>
+<section class="card" style="margin-top:16px"><h2>Importance globale (moyenne des |SHAP|)</h2><div class="canvas-wrap"><canvas id="chart-glob"></canvas></div></section>
+</main>
+<script>
+const $=s=>document.querySelector(s);let cExp,cGlob,cur=null;
+const pct=x=>(100*x).toFixed(1)+" %";
+async function api(u,o){const r=await fetch(u,o);if(!r.ok)throw new Error(await r.text());return r.json()}
+async function loadSummary(){
+  const s=await api("/api/summary"),m=s.metrics;
+  const k=[["ROC-AUC",m.roc_auc.toFixed(3)],["PR-AUC",m.pr_auc.toFixed(3)],["Précision",pct(m.precision)],["Rappel",pct(m.recall)],["F1",m.f1.toFixed(3)],["Coût évité",pct(m.cost_reduction)]];
+  $("#kpis").innerHTML=k.map(([a,b])=>`<div class="kpi"><b>${b}</b><span>${a} (test temporel)</span></div>`).join("");
+  $("#note").textContent=s.note+" Seuil d'alerte : "+m.threshold.toFixed(2)+".";
+  cGlob?.destroy();
+  cGlob=new Chart($("#chart-glob"),{type:"bar",data:{labels:s.importance.map(i=>i.feature),datasets:[{data:s.importance.map(i=>i.mean_abs_shap),backgroundColor:"#3b73c4"}]},options:{indexAxis:"y",maintainAspectRatio:false,plugins:{legend:{display:false}}}});
+}
+async function loadTable(){
+  const q=new URLSearchParams({label:$("#f-label").value,flagged:$("#f-flag").value,sort:$("#f-sort").value,limit:40});
+  const rows=await api("/api/transactions?"+q);
+  $("#tbody").innerHTML=rows.map(r=>`<tr data-i="${r.idx}" onclick="explainTx(${r.idx})"><td>${r.id}</td><td>${r.amount.toFixed(2)} $</td><td>${r.product??"—"}</td>
+  <td><div class="bar"><i style="width:${(r.proba*100).toFixed(0)}%"></i></div>${r.proba.toFixed(3)}</td>
+  <td><span class="tag ${r.flagged?"t-red":"t-ok"}">${r.flagged?"signalée":"ok"}</span></td><td>${r.fraud?"fraude":"légitime"}</td></tr>`).join("");
+}
+function render(e,keepInputs){
+  $("#placeholder").hidden=true;$("#exp").hidden=false;
+  $("#score").textContent="Score "+e.proba.toFixed(3);
+  $("#flag").innerHTML=`<span class="tag ${e.flagged?"t-red":"t-ok"}">${e.flagged?"Transaction signalée":"Non signalée"}</span>`;
+  $("#truth").textContent="Réel : "+(e.fraud?"fraude":"légitime")+" · risque moyen du modèle : "+pct(e.base_proba);
+  const items=[...e.items].sort((a,b)=>Math.abs(b.shap)-Math.abs(a.shap));
+  const labels=items.map(i=>`${i.feature} = ${i.value??"manquant"}`).concat(["autres variables"]);
+  const data=items.map(i=>i.shap).concat([e.others]);
+  cExp?.destroy();
+  cExp=new Chart($("#chart-exp"),{type:"bar",data:{labels,datasets:[{data,backgroundColor:data.map(v=>v>=0?"#d64545":"#3b73c4")}]},options:{indexAxis:"y",maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{font:{size:11}}}}}});
+  if(!keepInputs){
+    cur.orig={};items.forEach(i=>cur.orig[i.feature]=String(i.value??""));
+  }
+  $("#wi").innerHTML=items.map(i=>`<div><label>${i.feature}</label><input data-f="${i.feature}" value="${cur.vals?.[i.feature]??i.value??""}"></div>`).join("");
+}
+async function explainTx(idx){
+  document.querySelectorAll("tbody tr").forEach(t=>t.classList.toggle("sel",t.dataset.i==idx));
+  cur={idx,orig:{}};$("#wi-res").textContent="";
+  const e=await api("/api/explain/"+idx);cur.base=e;render(e,false);
+}
+async function whatIf(){
+  const changes={};
+  document.querySelectorAll("#wi input").forEach(i=>{if(i.value!==(cur.orig[i.dataset.f]??i.value))changes[i.dataset.f]=i.value});
+  if(!Object.keys(changes).length){$("#wi-res").textContent="Aucune valeur modifiée.";return}
+  try{
+    const e=await api("/api/whatif",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({idx:cur.idx,changes})});
+    cur.vals=Object.fromEntries(Object.entries(changes));
+    render(e,true);
+    $("#wi-res").textContent=`Score initial ${cur.base.proba.toFixed(3)} → nouveau score ${e.proba.toFixed(3)}`;
+  }catch(err){$("#wi-res").textContent="Erreur : "+err.message}
+}
+loadSummary();loadTable();
+</script>
+</body></html>

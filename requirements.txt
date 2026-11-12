@@ -1,0 +1,6 @@
+# Exécution de l'application Streamlit (suffisant pour le déploiement)
+streamlit>=1.50
+pandas>=2.0
+numpy
+lightgbm>=4.0
+pyarrow
